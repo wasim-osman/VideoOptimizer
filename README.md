@@ -98,6 +98,26 @@ beside the source as `name_optimized.mp4` unless you choose otherwise in Setting
   interrupted encode never leaves a half-written file where a real one should be.
 - Click the window after a run to reveal the result in Finder.
 
+## App icon
+
+`Resources/AppIcon.icns` is generated, not drawn once and exported — a hairline stroke
+that reads correctly at 512px is invisible at 16px, so
+[`scripts/generate-app-icon.swift`](scripts/generate-app-icon.swift) renders each of
+macOS's ten required sizes straight from the vector geometry with an optically-corrected
+stroke weight per size (thicker relative weight small, a true hairline at full
+resolution), rather than downsampling one master image. The squircle mask and outer
+margin are baked in by hand to match Apple's Big Sur icon grid, since a hand-built
+`.icns` (this project has no Xcode asset catalog) is shown exactly as authored — the OS
+does not add its own mask.
+
+```sh
+swift scripts/generate-app-icon.swift AppIcon.iconset   # writes the 10 PNGs
+iconutil -c icns AppIcon.iconset -o Resources/AppIcon.icns
+```
+
+`package.sh` copies the committed `.icns` into every build; regenerate it only when the
+icon design itself changes.
+
 ## Architecture
 
 ```
