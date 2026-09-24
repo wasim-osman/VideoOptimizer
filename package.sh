@@ -2,15 +2,28 @@
 #
 # Builds VideoOptimizer.app from the SwiftPM executable and wraps it in a DMG.
 #
+# By default this bundles a self-contained ffmpeg/ffprobe (see scripts/bundle-runtime.py)
+# so the DMG works standalone with no Homebrew dependency. Pass --no-ffmpeg to skip that
+# and ship the app without it (it will then fall back to /opt/homebrew/bin at runtime,
+# same as a debug build).
+#
 # The result is ad-hoc signed only. Without a Developer ID certificate it cannot be
 # notarised, so macOS will quarantine it on any machine that did not build it — see
 # the Installation section of README.md for what users have to do about that.
 #
-# usage: ./package.sh [version]
+# usage: ./package.sh [version] [--no-ffmpeg]
 
 set -euo pipefail
 
-VERSION="${1:-1.0.0}"
+VERSION="1.0.0"
+BUNDLE_FFMPEG=1
+for arg in "$@"; do
+    case "$arg" in
+        --no-ffmpeg) BUNDLE_FFMPEG=0 ;;
+        *) VERSION="$arg" ;;
+    esac
+done
+
 APP_NAME="VideoOptimizer"
 BUILD_DIR=".build/release"
 STAGE="$(mktemp -d)"
@@ -62,12 +75,30 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-# Placeholder so the bundled-binary location is obvious to anyone building their own
-# GPL ffmpeg (see README "Bundling ffmpeg").
-cat > "$APP/Contents/Resources/bin/README" <<'NOTE'
-Drop a statically linked `ffmpeg` and `ffprobe` here to make the app self-contained.
-When this directory is empty the app falls back to /opt/homebrew/bin.
+if [ "$BUNDLE_FFMPEG" = "1" ]; then
+    SYSTEM_FFMPEG="$(command -v ffmpeg || true)"
+    SYSTEM_FFPROBE="$(command -v ffprobe || true)"
+    if [ -z "$SYSTEM_FFMPEG" ] || [ -z "$SYSTEM_FFPROBE" ]; then
+        echo "==> No system ffmpeg/ffprobe found — building without a bundled runtime"
+        echo "    (install with 'brew install ffmpeg' to produce a self-contained DMG)"
+        BUNDLE_FFMPEG=0
+    else
+        echo "==> Bundling ffmpeg ($SYSTEM_FFMPEG) and its libraries"
+        cp "$SYSTEM_FFMPEG" "$APP/Contents/Resources/bin/ffmpeg"
+        cp "$SYSTEM_FFPROBE" "$APP/Contents/Resources/bin/ffprobe"
+        chmod +x "$APP/Contents/Resources/bin/ffmpeg" "$APP/Contents/Resources/bin/ffprobe"
+        python3 scripts/bundle-runtime.py "$APP"
+        cp THIRD_PARTY_LICENSES.md "$APP/Contents/Resources/"
+    fi
+fi
+
+if [ "$BUNDLE_FFMPEG" = "0" ]; then
+    mkdir -p "$APP/Contents/Resources/bin"
+    cat > "$APP/Contents/Resources/bin/README" <<'NOTE'
+This build does not bundle ffmpeg — the app falls back to /opt/homebrew/bin/ffmpeg.
+Run package.sh without --no-ffmpeg (and with ffmpeg on PATH) to bundle it.
 NOTE
+fi
 
 echo "==> Signing (ad-hoc)"
 codesign --force --deep --sign - "$APP"

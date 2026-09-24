@@ -51,19 +51,9 @@ H.264/HEVC/AV1 in any mode.
 
 Requires **macOS 14+** on Apple Silicon.
 
-### 1. Install ffmpeg
-
-The app does not bundle ffmpeg yet. It looks for a bundled binary first, then falls back to
-`/opt/homebrew/bin`:
-
-```sh
-brew install ffmpeg
-```
-
-### 2. Install the app
-
 Download the DMG from [Releases](../../releases), open it, and drag VideoOptimizer to
-Applications.
+Applications. The release DMG bundles its own ffmpeg and ffprobe (see
+[Bundling ffmpeg](#bundling-ffmpeg)) — nothing else to install.
 
 Because the app is **not signed with a Developer ID**, macOS will refuse to open it on first
 launch. Either right-click the app and choose **Open**, or clear the quarantine flag:
@@ -80,8 +70,14 @@ build it yourself — it takes one command.
 ```sh
 git clone https://github.com/wasim-osman/VideoOptimizer.git
 cd VideoOptimizer
-make package          # builds, tests, and writes dist/VideoOptimizer-1.0.0.dmg
+brew install ffmpeg   # only needed to produce a self-contained DMG; see below
+make package          # builds, tests, and writes dist/VideoOptimizer-<version>.dmg
 ```
+
+`make package` bundles whatever `ffmpeg`/`ffprobe` it finds on `PATH` into the app (see
+[Bundling ffmpeg](#bundling-ffmpeg)). Without Homebrew's ffmpeg installed, it builds a
+smaller DMG that falls back to `/opt/homebrew/bin` at runtime instead — same as running from
+`swift build` directly. Force that explicitly with `./package.sh <version> --no-ffmpeg`.
 
 Or just run the pieces:
 
@@ -141,8 +137,6 @@ have full Xcode installed, that flag is harmless.
 
 ## Known limitations
 
-- **No bundled ffmpeg.** The app requires ffmpeg on the system. Bundling a static build is the
-  next milestone; see [Bundling ffmpeg](#bundling-ffmpeg).
 - **Not signed or notarised.** Needs a paid Apple Developer ID. Until then, Gatekeeper will
   warn on first launch.
 - **Downscaling uses `scale`, not `zscale`.** zscale gives better resampling and dithering but
@@ -160,18 +154,38 @@ That keeps this project's MIT-licensed Swift source clearly separate from ffmpeg
 and it buys process isolation (a malformed file crashes the child, not the app), trivial
 cancellation, and a machine-readable progress stream.
 
-To make a build self-contained, drop statically linked `ffmpeg` and `ffprobe` binaries into
-`VideoOptimizer.app/Contents/Resources/bin/`. `BinaryLocator` prefers them over the system
-copies.
+`BinaryLocator` looks for `ffmpeg`/`ffprobe` in `Contents/Resources/bin/` first and falls
+back to `/opt/homebrew/bin`, so the same code path works whether or not a build bundles them.
 
-**If you distribute such a build**, note that a quality-first ffmpeg includes x264 and x265,
-which are GPL. Redistributing those binaries carries GPL obligations: publish the build script
-and a written offer for the corresponding source. This is also why the app cannot ship on the
-Mac App Store.
+**Release DMGs bundle Homebrew's ffmpeg**, made relocatable by
+[`scripts/bundle-runtime.py`](scripts/bundle-runtime.py): it copies every dylib the binary
+depends on into `Contents/Resources/lib/` and rewrites the load commands to
+`@executable_path`/`@loader_path`, so the result runs with no Homebrew on the machine at all
+(verified by moving the built app to a fresh location with `PATH` and `DYLD_LIBRARY_PATH`
+stripped and running a real encode through it).
+
+This is a deliberate departure from the original spec, which called for a single **static**
+ffmpeg binary built from source. That is still the better end state — it is what avoids the
+`com.apple.security.cs.disable-library-validation` entitlement a hardened-runtime, notarised
+build would need — but compiling x264 + x265 + SVT-AV1 + ffmpeg from source is a multi-hour
+undertaking with real toolchain risk, and the reason to prefer it does not apply yet, since
+this app has no Developer ID to notarise with. Bundling Homebrew's dynamically-linked build
+gets to "the DMG works standalone" today; revisit for a true static build once notarisation
+is pursued.
+
+**This bundling has real licensing consequences.** ffmpeg built with `--enable-gpl` links
+x264 and x265, both GPL. Redistributing that binary — statically or dynamically linked makes
+no difference — carries GPL obligations. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
+for exactly what is bundled, at what version, under what licence, with each project's licence
+text in [`licenses/`](licenses/). This is also why the app cannot ship on the Mac App Store.
+
+Building with `./package.sh --no-ffmpeg` skips all of this and produces a smaller DMG that
+requires a system ffmpeg instead.
 
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
 
-ffmpeg is a separate program invoked at runtime and is **not** covered by this licence. It
-carries its own (LGPL or GPL depending on how it was built).
+The release DMG additionally bundles ffmpeg and several other libraries as separate
+programs; those are **not** covered by this licence and carry their own — see
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
