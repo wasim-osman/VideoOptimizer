@@ -14,14 +14,44 @@ final class DropZoneView: NSView {
 
     var onDrop: (([URL]) -> Void)?
     var onClick: (() -> Void)?
+    var onSettingsButtonTapped: (() -> Void)?
 
     private var isTargeted = false
     private var display = Display(headline: "Drop video files here", detail: "", progress: nil)
+    private let settingsButton = NSButton()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
         registerForDraggedTypes([.fileURL])
+        configureSettingsButton()
+    }
+
+    /// A single small gear in the corner — the only chrome on an otherwise bare drop
+    /// target. As a real subview it intercepts its own clicks, so it never triggers the
+    /// "reveal last output" click-through the rest of the window has.
+    private func configureSettingsButton() {
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.isBordered = false
+        settingsButton.bezelStyle = .regularSquare
+        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
+        settingsButton.imageScaling = .scaleProportionallyUpOrDown
+        settingsButton.contentTintColor = .tertiaryLabelColor
+        settingsButton.toolTip = "Settings"
+        settingsButton.target = self
+        settingsButton.action = #selector(settingsButtonClicked)
+        addSubview(settingsButton)
+        NSLayoutConstraint.activate([
+            settingsButton.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            settingsButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -18),
+            settingsButton.widthAnchor.constraint(equalToConstant: 26),
+            settingsButton.heightAnchor.constraint(equalToConstant: 26),
+        ])
+    }
+
+    @objc private func settingsButtonClicked() {
+        onSettingsButtonTapped?()
     }
 
     required init?(coder: NSCoder) {

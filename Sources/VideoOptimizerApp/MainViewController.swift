@@ -30,6 +30,7 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         dropZone.autoresizingMask = [.width, .height]
         dropZone.onDrop = { [weak self] urls in self?.enqueue(urls) }
         dropZone.onClick = { [weak self] in self?.revealLastOutput() }
+        dropZone.onSettingsButtonTapped = { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: NSApp.delegate, from: nil) }
         view = dropZone
     }
 

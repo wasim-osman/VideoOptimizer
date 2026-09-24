@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @MainActor
-    @objc private func showSettings(_ sender: Any?) {
+    @objc func showSettings(_ sender: Any?) {
         if settingsController == nil {
             settingsController = SettingsWindowController()
         }

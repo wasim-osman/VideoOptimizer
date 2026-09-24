@@ -34,7 +34,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 330),
+            contentRect: NSRect(x: 0, y: 0, width: 480, height: 356),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -66,15 +66,44 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             tabs.addTabViewItem(item)
         }
 
+        let credit = developerCredit()
+
         let container = NSView()
         container.addSubview(tabs)
+        container.addSubview(credit)
         NSLayoutConstraint.activate([
             tabs.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
             tabs.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
             tabs.topAnchor.constraint(equalTo: container.topAnchor, constant: 14),
-            tabs.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -14),
+            tabs.bottomAnchor.constraint(equalTo: credit.topAnchor, constant: -6),
+
+            credit.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            credit.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+            credit.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
         ])
         return container
+    }
+
+    /// A single quiet line under the tabs — the only "about" this app has.
+    private func developerCredit() -> NSView {
+        let text = NSMutableAttributedString(
+            string: "Developed by Wasim Osman",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.tertiaryLabelColor,
+            ]
+        )
+        let nameRange = (text.string as NSString).range(of: "Wasim Osman")
+        text.addAttributes([
+            .link: URL(string: "https://github.com/wasim-osman")!,
+            .foregroundColor: NSColor.linkColor,
+        ], range: nameRange)
+
+        let field = NSTextField(labelWithAttributedString: text)
+        field.isSelectable = true
+        field.allowsEditingTextAttributes = true
+        field.translatesAutoresizingMaskIntoConstraints = false
+        return field
     }
 
     private func generalTab() -> NSView {
