@@ -1,0 +1,9 @@
+.build/
+dist/
+.DS_Store
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+
+# Local screen captures. gui2.png is a full-desktop grab containing a private
+# meeting and client material — it must not be published.
+*.png
