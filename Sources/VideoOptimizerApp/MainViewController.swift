@@ -30,6 +30,7 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         dropZone.autoresizingMask = [.width, .height]
         dropZone.onDrop = { [weak self] urls in self?.enqueue(urls) }
         dropZone.onClick = { [weak self] in self?.revealLastOutput() }
+        dropZone.onDoubleClick = { NSApp.sendAction(#selector(AppDelegate.openFilesDialog(_:)), to: NSApp.delegate, from: nil) }
         dropZone.onSettingsButtonTapped = { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: NSApp.delegate, from: nil) }
         view = dropZone
     }
@@ -169,6 +170,17 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
             }
             if !current.speedText.isEmpty { parts.append(current.speedText) }
             if !current.etaText.isEmpty { parts.append(current.etaText) }
+
+            // Name whatever is waiting behind the current job — otherwise a second
+            // drop while busy is queued correctly but invisible, and looks like it
+            // did nothing.
+            let queued = jobs.filter { $0.state == .queued && $0.id != current.id }
+            if let next = queued.first {
+                let extra = queued.count - 1
+                parts.append(extra > 0
+                    ? "next: \(next.inputURL.lastPathComponent) (+\(extra))"
+                    : "next: \(next.inputURL.lastPathComponent)")
+            }
 
             let overall = jobs.reduce(0.0) { $0 + $1.progress } / Double(jobs.count)
             dropZone.show(.init(headline: headline, detail: parts.joined(separator: " · "), progress: overall))

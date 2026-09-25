@@ -14,11 +14,13 @@ final class DropZoneView: NSView {
 
     var onDrop: (([URL]) -> Void)?
     var onClick: (() -> Void)?
+    var onDoubleClick: (() -> Void)?
     var onSettingsButtonTapped: (() -> Void)?
 
     private var isTargeted = false
     private var display = Display(headline: "Drop video files here", detail: "", progress: nil)
     private let settingsButton = NSButton()
+    private var pendingSingleClick: DispatchWorkItem?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -136,8 +138,23 @@ final class DropZoneView: NSView {
                                 withAttributes: attrs)
     }
 
+    /// A double click opens a file picker; a single click reveals the last output.
+    /// A genuine double click still delivers a separate mouseDown for its first half
+    /// (with clickCount 1) before the second one arrives with clickCount 2, so the
+    /// single-click action is deferred by the system's own double-click interval and
+    /// cancelled if a second click promotes it — otherwise every double click would
+    /// also flash open a Finder window as a side effect of its first half.
     override func mouseDown(with event: NSEvent) {
-        onClick?()
+        if event.clickCount >= 2 {
+            pendingSingleClick?.cancel()
+            pendingSingleClick = nil
+            onDoubleClick?()
+            return
+        }
+        pendingSingleClick?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in self?.onClick?() }
+        pendingSingleClick = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: workItem)
     }
 
     // MARK: - Dragging destination

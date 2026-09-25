@@ -91,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsController?.window?.makeKeyAndOrderFront(nil)
     }
 
-    @objc private func openFilesDialog(_ sender: Any?) {
+    @objc func openFilesDialog(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = true
