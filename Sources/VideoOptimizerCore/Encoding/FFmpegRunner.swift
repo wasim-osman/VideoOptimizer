@@ -142,7 +142,12 @@ public final class FFmpegRunner: @unchecked Sendable {
             process.standardInput = input
             process.standardOutput = stdout
             process.standardError = stderr
-            process.qualityOfService = .userInitiated
+            // .utility, not .userInitiated: this can run for hours on a large source
+            // (Apple's own guidance for a long-running, progress-visible task), and
+            // letting it compete for scheduling at interactive priority is how a heavy
+            // encode ends up starving the app's own UI thread — the Stop button and
+            // the queue display go sluggish exactly when they matter most.
+            process.qualityOfService = .utility
             self.process = process
             self.stdinPipe = input
 

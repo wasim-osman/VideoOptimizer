@@ -16,10 +16,12 @@ final class DropZoneView: NSView {
     var onClick: (() -> Void)?
     var onDoubleClick: (() -> Void)?
     var onSettingsButtonTapped: (() -> Void)?
+    var onStopButtonTapped: (() -> Void)?
 
     private var isTargeted = false
     private var display = Display(headline: "Drop video files here", detail: "", progress: nil)
     private let settingsButton = NSButton()
+    private let stopButton = NSButton()
     private var pendingSingleClick: DispatchWorkItem?
 
     override init(frame frameRect: NSRect) {
@@ -27,6 +29,40 @@ final class DropZoneView: NSView {
         wantsLayer = true
         registerForDraggedTypes([.fileURL])
         configureSettingsButton()
+        configureStopButton()
+    }
+
+    /// Shown only while a job is actually running — the menu item and ⌘. still work
+    /// either way, but a control this destructive shouldn't live only behind a menu.
+    func setStopButtonVisible(_ visible: Bool) {
+        stopButton.isHidden = !visible
+    }
+
+    /// Mirrors the settings gear on the opposite corner: a plain stop glyph, tinted
+    /// red since this is the one destructive control the window has.
+    private func configureStopButton() {
+        stopButton.translatesAutoresizingMaskIntoConstraints = false
+        stopButton.isBordered = false
+        stopButton.bezelStyle = .regularSquare
+        stopButton.image = NSImage(systemSymbolName: "stop.circle", accessibilityDescription: "Stop Converting")?
+            .withSymbolConfiguration(.init(pointSize: 15, weight: .regular))
+        stopButton.imageScaling = .scaleProportionallyUpOrDown
+        stopButton.contentTintColor = .systemRed
+        stopButton.toolTip = "Stop Converting"
+        stopButton.target = self
+        stopButton.action = #selector(stopButtonClicked)
+        stopButton.isHidden = true
+        addSubview(stopButton)
+        NSLayoutConstraint.activate([
+            stopButton.topAnchor.constraint(equalTo: topAnchor, constant: 18),
+            stopButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            stopButton.widthAnchor.constraint(equalToConstant: 26),
+            stopButton.heightAnchor.constraint(equalToConstant: 26),
+        ])
+    }
+
+    @objc private func stopButtonClicked() {
+        onStopButtonTapped?()
     }
 
     /// A single small gear in the corner — the only chrome on an otherwise bare drop

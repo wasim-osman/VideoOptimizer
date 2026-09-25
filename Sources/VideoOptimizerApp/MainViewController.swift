@@ -32,6 +32,7 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         dropZone.onClick = { [weak self] in self?.revealLastOutput() }
         dropZone.onDoubleClick = { NSApp.sendAction(#selector(AppDelegate.openFilesDialog(_:)), to: NSApp.delegate, from: nil) }
         dropZone.onSettingsButtonTapped = { NSApp.sendAction(#selector(AppDelegate.showSettings(_:)), to: NSApp.delegate, from: nil) }
+        dropZone.onStopButtonTapped = { [weak self] in self?.stopConverting(nil) }
         view = dropZone
     }
 
@@ -121,6 +122,28 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
     /// Mirrors the queue so menu validation stays synchronous; refreshed on each poll.
     private var hasActiveJobs = false
 
+    /// Whether quitting right now would need to be confirmed. Not a live query — it's
+    /// the same up-to-0.4s-stale flag menu validation already relies on, which is fine
+    /// for deciding whether to show a warning dialog.
+    var hasJobsWorthWarningAboutOnQuit: Bool { hasActiveJobs }
+
+    /// Called only when the app itself is quitting with jobs still running: cancels
+    /// everything and waits briefly for ffmpeg to actually exit, so a quit — unlike a
+    /// force-quit or crash — never leaves an orphaned encode with nothing able to see
+    /// or stop it. Returns once every job is out of an active state, or after a bounded
+    /// wait if something doesn't stop in time.
+    func stopAllJobsForQuit() async {
+        await queue.cancelAll()
+        // FFmpegRunner's own escalation is 'q' -> 3s -> SIGINT -> 2s -> SIGKILL, so this
+        // needs real margin beyond 5s to reliably outlast it rather than racing it.
+        let deadline = Date().addingTimeInterval(7)
+        while Date() < deadline {
+            let jobs = await queue.snapshot()
+            guard jobs.contains(where: { Self.isActive($0.state) }) else { return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+    }
+
     override func keyDown(with event: NSEvent) {
         // Esc is the other conventional way out of a long operation.
         if event.keyCode == 53, hasActiveJobs {
@@ -146,6 +169,8 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
     }
 
     private func render(_ jobs: [Job]) {
+        defer { dropZone.setStopButtonVisible(hasActiveJobs) }
+
         guard !jobs.isEmpty else {
             hasActiveJobs = false
             dropZone.show(.init(headline: "Drop video files here", detail: "", progress: nil))

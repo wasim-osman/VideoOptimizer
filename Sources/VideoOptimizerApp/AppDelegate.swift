@@ -3,6 +3,7 @@ import AppKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: NSWindow!
+    private var mainViewController: MainViewController!
     private var settingsController: SettingsWindowController?
     private var activity: NSObjectProtocol?
 
@@ -18,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let mainVC = MainViewController()
         mainVC.view.frame = NSRect(x: 0, y: 0, width: 720, height: 560)
+        mainViewController = mainVC
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
@@ -31,6 +33,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("MainWindow")
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Without this, quitting mid-encode (⌘Q, closing the window, or the Dock menu)
+    /// orphans the ffmpeg child: it keeps running, reparented to launchd, with nothing
+    /// left able to see its progress, show it in any UI, or cancel it — and its output
+    /// never gets renamed from .part to a final file, since that step runs in this
+    /// process, not in ffmpeg itself. That combination is exactly what "the app quit
+    /// but the encode kept eating CPU with no way to stop it" looks like.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard mainViewController?.hasJobsWorthWarningAboutOnQuit == true else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "A conversion is in progress"
+        alert.informativeText = "Quitting now stops it. The output file will not be completed."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Stop and Quit")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return .terminateCancel }
+
+        Task { @MainActor in
+            await mainViewController?.stopAllJobsForQuit()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     func buildMenu() {
