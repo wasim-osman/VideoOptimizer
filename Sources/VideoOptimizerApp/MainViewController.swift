@@ -74,8 +74,14 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         Task { @MainActor in
             await adoptPendingConcurrencyIfIdle()
             // macOS can deliver one window-drop through BOTH the drag handler and
-            // application(_:openFiles:) — de-duplicate so one file = one job.
-            let live = await queue.snapshot().map { $0.inputURL.standardizedFileURL }
+            // application(_:openFiles:) — de-duplicate so one file = one job. Only
+            // against jobs still actually in flight: a cancelled, failed, or even
+            // succeeded job must not block that same file from ever being re-dropped
+            // again in this session — re-dropping the file you just cancelled is a
+            // completely reasonable thing to do, and used to be silently ignored.
+            let live = await queue.snapshot()
+                .filter { Self.isActive($0.state) }
+                .map { $0.inputURL.standardizedFileURL }
             var seen = Set(live)
             for url in urls {
                 let key = url.standardizedFileURL

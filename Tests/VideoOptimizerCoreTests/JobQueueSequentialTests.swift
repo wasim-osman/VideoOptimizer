@@ -22,13 +22,15 @@ final class JobQueueSequentialTests {
 
     /// A short, genuinely-bloated clip (real noise, not a flat testsrc, which the
     /// encoder would compress trivially and the bloat guard would then discard).
-    private func makeFixture(named name: String, seconds: Int = 3, size: String = "640x360") throws -> URL {
+    private func makeFixture(
+        named name: String, seconds: Int = 3, size: String = "640x360", noise: Int = 60
+    ) throws -> URL {
         let url = dir.appendingPathComponent(name)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: BinaryLocator.ffmpegPath())
         process.arguments = [
             "-hide_banner", "-y", "-f", "lavfi",
-            "-i", "color=c=gray:s=\(size):r=30,noise=alls=60:allf=t+u",
+            "-i", "color=c=gray:s=\(size):r=30,noise=alls=\(noise):allf=t+u",
             "-t", "\(seconds)", "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "12M",
             url.path,
         ]
@@ -94,7 +96,8 @@ final class JobQueueSequentialTests {
         let queue = JobQueue(maxConcurrent: 1)
 
         func enqueueLikeTheGUI(_ url: URL) async {
-            let seen = Set(await queue.snapshot().map { $0.inputURL.standardizedFileURL })
+            let seen = Set(await queue.snapshot().filter { !isTerminal($0.state) }
+                .map { $0.inputURL.standardizedFileURL })
             guard !seen.contains(url.standardizedFileURL) else { return }
             await queue.addJob(url: url)
         }
@@ -139,5 +142,88 @@ final class JobQueueSequentialTests {
         #expect(jobA?.state == .succeeded)
         let jobB = await pollUntilTerminal(queue, idB)
         #expect(jobB?.state == .succeeded, "B must run once A frees the slot, got \(String(describing: jobB?.state))")
+    }
+
+    /// The newly reported bug: cancel a running job, then drop a different file.
+    /// FFmpegRunner's own cancel escalation takes real time (up to ~5s: 'q' -> 3s ->
+    /// SIGINT -> 2s -> SIGKILL) before JobQueue.finish() actually decrements `active`
+    /// and drains the next job — so this has to tolerate that delay rather than
+    /// expect B to start instantly, but it must still start on its own.
+    @Test("a job dropped after cancelling a different one still runs")
+    func jobAfterCancellingADifferentOneStillRuns() async throws {
+        // Long enough that cancel() has something real to interrupt.
+        let fileA = try makeFixture(named: "a.mp4", seconds: 20, size: "1280x720")
+        let fileB = try makeFixture(named: "b.mp4")
+
+        let queue = JobQueue(maxConcurrent: 1)
+        let idA = await queue.addJob(url: fileA)
+
+        var aIsEncoding = false
+        for _ in 0..<40 {
+            if await queue.job(id: idA)?.state == .encoding { aIsEncoding = true; break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(aIsEncoding, "precondition: A must be encoding when cancelled")
+
+        await queue.cancel(id: idA)
+        // Dropped immediately — before A's own cancellation has actually completed —
+        // which is exactly the timing a user clicking Stop and then dragging a new
+        // file within the same couple of seconds would hit.
+        let idB = await queue.addJob(url: fileB)
+
+        let jobA = await pollUntilTerminal(queue, idA)
+        #expect(jobA?.state == .cancelled, "got \(String(describing: jobA?.state))")
+
+        let jobB = await pollUntilTerminal(queue, idB)
+        #expect(jobB?.state != .queued, "B never started — this is the reported bug")
+        #expect(jobB?.state == .succeeded, "got \(String(describing: jobB?.state))")
+    }
+
+    /// The other plausible read of the same report: cancel a job, then drop the SAME
+    /// file again (a natural "let me just retry that" move). MainViewController's
+    /// dedup treats any URL already seen in the queue's snapshot as already-handled,
+    /// regardless of what state it ended in — if that check doesn't exclude terminal
+    /// states, a cancelled (or failed, or even succeeded) file can never be re-added
+    /// in the same session, silently.
+    @Test("the same file can be re-dropped after being cancelled")
+    func sameFileCanBeReDroppedAfterCancellation() async throws {
+        // Lighter noise than the other fixtures: this one gets a full clean re-encode
+        // (the whole point of the test), and heavy synthetic noise is close enough to
+        // incompressible that x265 can legitimately fail to beat the post-flight bloat
+        // guard's 92% threshold on it — a real, correct outcome, just not the one this
+        // test is about. Still 20s/720p, comfortably slow enough to still be .encoding
+        // when checked.
+        let fileA = try makeFixture(named: "a.mp4", seconds: 20, size: "1280x720", noise: 20)
+
+        let queue = JobQueue(maxConcurrent: 1)
+
+        func enqueueLikeTheGUI(_ url: URL) async -> UUID? {
+            let seen = Set(await queue.snapshot().filter { !isTerminal($0.state) }
+                .map { $0.inputURL.standardizedFileURL })
+            guard !seen.contains(url.standardizedFileURL) else { return nil }
+            return await queue.addJob(url: url)
+        }
+
+        let idA = try #require(await enqueueLikeTheGUI(fileA))
+        var aIsEncoding = false
+        for _ in 0..<40 {
+            if await queue.job(id: idA)?.state == .encoding { aIsEncoding = true; break }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(aIsEncoding)
+
+        await queue.cancel(id: idA)
+        let jobA = await pollUntilTerminal(queue, idA)
+        #expect(jobA?.state == .cancelled)
+
+        // Re-drop the exact same file, the same way the GUI's dedup would see it.
+        let idRetry = await enqueueLikeTheGUI(fileA)
+        #expect(idRetry != nil,
+                "re-dropping a cancelled file must not be silently swallowed by the dedup check")
+
+        if let idRetry {
+            let retryJob = await pollUntilTerminal(queue, idRetry)
+            #expect(retryJob?.state == .succeeded, "got \(String(describing: retryJob?.state))")
+        }
     }
 }
