@@ -2,8 +2,9 @@ import VideoOptimizerCore
 import Foundation
 
 // VideoOptimizer CLI — exercises the whole headless core against files or golden JSON.
-//   usage: videooptimizercli <video-file> [mode] [--hardware|--software] [--encode]
+//   usage: videooptimizercli <video-file> [mode] [--hardware|--software] [--codec=X] [--encode]
 //   mode:  fast | balanced | smallest
+//   codec: auto | h264 | hevc | av1 (default auto)
 
 let args = CommandLine.arguments
 guard args.count > 1 else {
@@ -52,6 +53,10 @@ var settings = Settings()
 settings.encoderMode = mode
 if args.contains("--hardware") { settings.useHardwareEncoder = true }
 if args.contains("--software") { settings.useHardwareEncoder = false }
+if let codecArg = args.first(where: { $0.hasPrefix("--codec=") })?.dropFirst("--codec=".count),
+   let codec = CodecChoice(rawValue: String(codecArg)) {
+    settings.codecChoice = codec
+}
 let plan = EncodePlanner().plan(media: media, settings: settings)
 
 switch plan.outcome {

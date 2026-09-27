@@ -168,6 +168,80 @@ struct EncodePlannerTests {
         #expect(args.contains("-crf") == false, "VideoToolbox has no CRF control")
     }
 
+    // MARK: - Smallest mode + the hardware toggle
+    //
+    // Smallest mode used to ignore useHardwareEncoder entirely — checking it changed
+    // nothing. H.264/HEVC (or auto, which prefers HEVC) can route to the media engine;
+    // AV1 cannot, since no hardware AV1 encoder exists on Apple Silicon yet.
+
+    @Test("Smallest + hardware + HEVC uses the media engine, not software x265")
+    func smallestHardwareHEVCUsesVideoToolbox() {
+        let args = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .hevc
+            $0.useHardwareEncoder = true
+        }.arguments
+        #expect(args.value(after: "-c:v") == "hevc_videotoolbox")
+        #expect(args.contains("-crf") == false, "VideoToolbox has no CRF control")
+    }
+
+    @Test("Smallest + hardware + auto also prefers hardware HEVC")
+    func smallestHardwareAutoUsesVideoToolbox() {
+        let args = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .auto
+            $0.useHardwareEncoder = true
+        }.arguments
+        #expect(args.value(after: "-c:v") == "hevc_videotoolbox",
+                "auto should behave like the \"Auto (HEVC)\" picker label implies")
+    }
+
+    @Test("Smallest + hardware + H.264 uses the H.264 media engine, not HEVC")
+    func smallestHardwareH264UsesH264VideoToolbox() {
+        let args = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .h264
+            $0.useHardwareEncoder = true
+        }.arguments
+        #expect(args.value(after: "-c:v") == "h264_videotoolbox",
+                "an explicit H.264 choice must not be silently upgraded to HEVC")
+    }
+
+    @Test("Smallest + hardware + AV1 stays software — there is no hardware AV1 encoder")
+    func smallestHardwareAV1StaysSoftware() {
+        let args = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .av1
+            $0.useHardwareEncoder = true
+        }.arguments
+        #expect(args.value(after: "-c:v") == "libsvtav1",
+                "checking the hardware box must not silently fail to encode AV1 at all")
+        #expect(args.contains("-crf"), "the software AV1 path still uses CRF, not -q:v")
+    }
+
+    @Test("Smallest without the hardware checkbox is unchanged: still software")
+    func smallestWithoutHardwareStillSoftware() {
+        let args = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .hevc
+            $0.useHardwareEncoder = false
+        }.arguments
+        #expect(args.value(after: "-c:v") == "libx265")
+    }
+
+    @Test("Smallest's hardware quality leans smaller than Fast's")
+    func smallestHardwareQualityIsBelowFast() {
+        let fastQ = plan(Fixtures.h264_1080p()) { $0.encoderMode = .fast }
+            .arguments.value(after: "-q:v").flatMap(Int.init) ?? 0
+        let smallestQ = plan(Fixtures.h264_1080p()) {
+            $0.encoderMode = .smallest
+            $0.codecChoice = .hevc
+            $0.useHardwareEncoder = true
+        }.arguments.value(after: "-q:v").flatMap(Int.init) ?? 0
+        #expect(smallestQ < fastQ,
+                "Smallest's hardware quality (\(smallestQ)) should lean smaller than Fast's (\(fastQ))")
+    }
+
     // MARK: - Colour and HDR
 
     @Test("colour tags are propagated")

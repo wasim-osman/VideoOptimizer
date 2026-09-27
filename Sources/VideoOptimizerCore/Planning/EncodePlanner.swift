@@ -127,20 +127,31 @@ public struct EncodePlanner: Sendable {
             }
 
         case .smallest:
-            // AV1 unless the user pinned a different codec.
-            (encoder, encoderKind) = Self.softwareEncoder(for: codecChoice, default: .av1)
-            crf = ladder.crf(
-                for: ladderHeight,
-                profile: profile,
-                encoder: encoderKind,
-                qualityOffset: settings.qualityOffset
-            )
-            switch encoderKind {
-            case .av1: presetArgs = ["-preset", "5", "-threads", "0"]
-            default:   presetArgs = ["-preset", "slow", "-threads", "0"]
-            }
-            if encoderKind == .x265 {
-                x265Params = "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:deblock=-1,-1:frame-threads=0"
+            // No hardware AV1 encoder exists on Apple Silicon yet, so an explicit AV1
+            // choice always stays software regardless of the hardware toggle — there
+            // is nothing for it to route to. H.264/HEVC (or auto, which prefers HEVC,
+            // matching the "Auto (HEVC)" picker label) can use the media engine.
+            if wantsHardware, codecChoice != .av1 {
+                encoder = codecChoice == .h264 ? "h264_videotoolbox" : "hevc_videotoolbox"
+                encoderKind = .videoToolbox
+                crf = videoToolboxQuality(base: Self.smallestHardwareQuality, offset: settings.qualityOffset)
+                presetArgs = ["-realtime", "0"]
+            } else {
+                // AV1 unless the user pinned a different codec.
+                (encoder, encoderKind) = Self.softwareEncoder(for: codecChoice, default: .av1)
+                crf = ladder.crf(
+                    for: ladderHeight,
+                    profile: profile,
+                    encoder: encoderKind,
+                    qualityOffset: settings.qualityOffset
+                )
+                switch encoderKind {
+                case .av1: presetArgs = ["-preset", "5", "-threads", "0"]
+                default:   presetArgs = ["-preset", "slow", "-threads", "0"]
+                }
+                if encoderKind == .x265 {
+                    x265Params = "aq-mode=3:psy-rd=2.0:psy-rdoq=1.0:deblock=-1,-1:frame-threads=0"
+                }
             }
         }
 
@@ -334,6 +345,11 @@ public struct EncodePlanner: Sendable {
     /// so the ladder's values and its 10…40 clamp do not apply here.
     static let fastQuality = 55
     static let balancedQuality = 70
+    /// Below Fast's own value: Smallest's whole point is prioritising size, and
+    /// hardware HEVC is never as bit-efficient as software x265/AV1 at a given
+    /// visual quality — this leans harder into "smaller" to partially compensate,
+    /// not a claim that it will match the software path's compression.
+    static let smallestHardwareQuality = 42
 
     /// Applies the user's quality offset to a VideoToolbox quality value.
     /// The offset is expressed in CRF steps, where negative means better quality;
