@@ -148,7 +148,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         codec.addItems(withTitles: ["Auto (HEVC)", "H.264", "HEVC", "AV1"])
         codec.target = self
-        codec.action = #selector(commitFields)
+        codec.action = #selector(codecChanged)
 
         qualityOffset.numberOfTickMarks = 7
         qualityOffset.allowsTickMarkValuesOnly = true
@@ -166,7 +166,6 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         useHardware.target = self
         useHardware.action = #selector(commitFields)
-        useHardware.toolTip = "Encodes with the VideoToolbox HEVC hardware encoder on Apple silicon — roughly 5× faster than software, at the cost of larger files."
 
         analyseVMAF.target = self
         analyseVMAF.action = #selector(commitFields)
@@ -262,6 +261,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         qualityOffsetLabel.stringValue = offsetText(s.qualityOffset)
         useHardware.state = s.useHardwareEncoder ? .on : .off
         analyseVMAF.state = s.analyseForBestSettings ? .on : .off
+        updateHardwareCheckboxEnabled()
 
         concurrency.integerValue = s.concurrency
         concurrencyLabel.stringValue = "\(s.concurrency)"
@@ -309,6 +309,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func updateFolderRowEnabled() {
         let needsFolder = store.settings.outputLocation == .chooseFolder
         folderLabel.textColor = needsFolder ? .secondaryLabelColor : .tertiaryLabelColor
+    }
+
+    @objc private func codecChanged() {
+        commitFields()
+        updateHardwareCheckboxEnabled()
+    }
+
+    /// There is no hardware AV1 encoder on Apple Silicon, so with AV1 explicitly
+    /// selected the checkbox would do nothing if checked — disable it rather than
+    /// offer a combination that silently has no effect. Left as-is (not force-
+    /// unchecked) so switching back to H.264/HEVC restores whatever the user had.
+    private func updateHardwareCheckboxEnabled() {
+        let selectedCodec: CodecChoice = [.auto, .h264, .hevc, .av1][codec.indexOfSelectedItem]
+        let isAV1 = selectedCodec == .av1
+        useHardware.isEnabled = !isAV1
+        useHardware.toolTip = isAV1
+            ? "Not available for AV1 — there is no hardware AV1 encoder on Apple Silicon yet."
+            : "Encodes with the VideoToolbox H.264/HEVC hardware encoder on Apple silicon — roughly 5× faster than software, at the cost of larger files."
     }
 
     @objc private func chooseFolder() {
