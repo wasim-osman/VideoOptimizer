@@ -13,6 +13,10 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
     private var pollTimer: Timer?
     private var lastOutputURL: URL?
     private var hasAnnouncedDrain = true
+    /// Every job ID whose outcome has already been folded into LifetimeStatsStore, so a
+    /// completed job is counted exactly once no matter how many times the 0.4s poll
+    /// timer sees it sitting there afterward.
+    private var recordedJobIDs: Set<UUID> = []
 
     init() {
         let settings = SettingsStore.shared.settings
@@ -43,10 +47,6 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
             self, selector: #selector(settingsChanged),
             name: SettingsStore.didChange, object: nil
         )
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(filesOpenedFromDock(_:)),
-            name: .init("VideoOptimizerFilesDropped"), object: nil
-        )
 
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in self?.refresh() }
@@ -63,8 +63,11 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
 
     // MARK: - Input
 
-    @objc private func filesOpenedFromDock(_ note: Notification) {
-        guard let urls = note.object as? [URL] else { return }
+    /// Entry point for files opened outside a drag: the Dock, Finder's "Open With",
+    /// double-clicking a video with this app as the default handler, or File ▸ Open…
+    /// A direct call from AppDelegate rather than a notification — see AppDelegate's
+    /// pendingOpenURLs for why a notification here was fragile at launch time.
+    func enqueueExternally(_ urls: [URL]) {
         enqueue(urls.filter(DropZoneView.isVideo))
     }
 
@@ -176,10 +179,12 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
 
     private func render(_ jobs: [Job]) {
         defer { dropZone.setStopButtonVisible(hasActiveJobs) }
+        recordNewlySucceededJobs(jobs)
 
         guard !jobs.isEmpty else {
             hasActiveJobs = false
-            dropZone.show(.init(headline: "Drop video files here", detail: "", progress: nil))
+            dropZone.show(.init(headline: "Drop video files here", detail: "", progress: nil,
+                                lifetimeCaption: lifetimeCaption()))
             return
         }
 
@@ -219,7 +224,27 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         }
 
         announceDrainIfNeeded()
-        dropZone.show(.init(headline: summaryHeadline(jobs), detail: summaryDetail(jobs), progress: nil))
+        dropZone.show(.init(headline: summaryHeadline(jobs), detail: summaryDetail(jobs), progress: nil,
+                            lifetimeCaption: lifetimeCaption()))
+    }
+
+    /// Folds every newly-succeeded job's before/after sizes into the persisted lifetime
+    /// total exactly once. Only genuine `.succeeded` conversions count — a job that was
+    /// already optimised or discarded as not-worth-keeping never touched a real output
+    /// file, so it saved nothing.
+    private func recordNewlySucceededJobs(_ jobs: [Job]) {
+        for job in jobs where job.state == .succeeded && !recordedJobIDs.contains(job.id) {
+            recordedJobIDs.insert(job.id)
+            guard let resultSize = job.resultSize else { continue }
+            LifetimeStatsStore.shared.record(inputBytes: job.inputSize, outputBytes: resultSize)
+        }
+    }
+
+    private func lifetimeCaption() -> String {
+        let stats = LifetimeStatsStore.shared.stats
+        guard stats.filesConverted > 0 else { return "" }
+        let filesText = stats.filesConverted == 1 ? "1 file" : "\(stats.filesConverted) files"
+        return "Lifetime: \(format(stats.totalBytesSaved)) saved across \(filesText)"
     }
 
     private func summaryHeadline(_ jobs: [Job]) -> String {

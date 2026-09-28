@@ -6,6 +6,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainViewController: MainViewController!
     private var settingsController: SettingsWindowController?
     private var activity: NSObjectProtocol?
+    /// URLs that arrived via application(_:openFiles:) before mainViewController
+    /// existed — a real race, not a hypothetical one: on a cold launch triggered by
+    /// opening a file (double-click, Finder's Open With, `open -a … file`), AppKit
+    /// does not guarantee this method fires after applicationDidFinishLaunching has
+    /// finished building the window. It used to be handled by posting a notification
+    /// that MainViewController's own observer picked up — but that observer is only
+    /// registered in viewDidAppear(), which runs even later, so the notification could
+    /// (and, confirmed by tracing it, reliably did) get posted before anyone was
+    /// listening and silently vanish. A direct call has no such ordering dependency;
+    /// this buffer covers the one remaining case where even the delegate itself hasn't
+    /// finished constructing the view controller yet.
+    private var pendingOpenURLs: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -33,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrameAutosaveName("MainWindow")
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        if !pendingOpenURLs.isEmpty {
+            mainViewController.enqueueExternally(pendingOpenURLs)
+            pendingOpenURLs.removeAll()
+        }
     }
 
     /// Without this, quitting mid-encode (⌘Q, closing the window, or the Dock menu)
@@ -117,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsController?.window?.makeKeyAndOrderFront(nil)
     }
 
+    @MainActor
     @objc func openFilesDialog(_ sender: Any?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -128,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             url.hasDirectoryPath || DropZoneView.isVideo(url)
         }
         guard !urls.isEmpty else { return }
-        NotificationCenter.default.post(name: .init("VideoOptimizerFilesDropped"), object: urls)
+        mainViewController.enqueueExternally(urls)
     }
 
     @objc private func openHelp(_ sender: Any?) {
@@ -140,7 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Dock file-drop handling
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
         let urls = filenames.map { URL(fileURLWithPath: $0) }
-        NotificationCenter.default.post(name: .init("VideoOptimizerFilesDropped"), object: urls)
+        if let mainViewController {
+            mainViewController.enqueueExternally(urls)
+        } else {
+            pendingOpenURLs.append(contentsOf: urls)
+        }
         sender.reply(toOpenOrPrint: .success)
     }
 

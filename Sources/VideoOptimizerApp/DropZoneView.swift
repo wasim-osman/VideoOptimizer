@@ -9,7 +9,10 @@ final class DropZoneView: NSView {
     struct Display: Equatable {
         var headline: String
         var detail: String
-        var progress: Double?   // nil hides the bar
+        var progress: Double?          // nil hides the bar
+        var lifetimeCaption: String = ""  // shown in the same strip as the progress bar,
+                                           // only when progress is nil — the two never
+                                           // both apply at once
     }
 
     var onDrop: (([URL]) -> Void)?
@@ -164,6 +167,11 @@ final class DropZoneView: NSView {
                 NSColor.controlAccentColor.setFill()
                 NSBezierPath(roundedRect: filled, xRadius: 1.5, yRadius: 1.5).fill()
             }
+        } else if !display.lifetimeCaption.isEmpty {
+            draw(display.lifetimeCaption,
+                 font: .systemFont(ofSize: 10, weight: .regular),
+                 color: .tertiaryLabelColor,
+                 baselineY: inset.minY + 14)
         }
     }
 

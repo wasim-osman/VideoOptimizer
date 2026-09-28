@@ -6,7 +6,7 @@ Drop a video file on the window and it is re-encoded to the smallest file that i
 visually indistinguishable from the source, at the source resolution by default.
 No dialogs, no settings to get right first.
 
-> **Status:** the encoding core is complete and covered by 105 tests. The release DMG bundles
+> **Status:** the encoding core is complete and covered by 112 tests. The release DMG bundles
 > its own ffmpeg — no Homebrew or system install required — but the app itself is not yet
 > code-signed or notarised. See [Installation](#installation) and
 > [Known limitations](#known-limitations). Full version history in
@@ -88,7 +88,7 @@ Or just run the pieces:
 
 ```sh
 make build            # swift build
-make test             # 105 tests
+make test             # 112 tests
 swift run VideoOptimizerCLI <file> [fast|balanced|smallest] --encode
 ```
 
@@ -113,6 +113,9 @@ names whatever's waiting ("next: b.mp4", or "+N" beyond that), not just a bare c
 - Quitting (⌘Q or closing the window) while something is converting asks for confirmation
   first, then actually stops the encode before the app terminates — it won't silently leave
   ffmpeg running in the background with nothing left able to see or cancel it.
+- **The app remembers how much it's saved you, in total, forever** — not just this session.
+  Whenever nothing is actively converting, the bottom of the window shows something like
+  "Lifetime: 4.2 GB saved across 37 files", persisted across launches and only ever growing.
 
 ## App icon
 
@@ -158,7 +161,7 @@ quotes and parentheses need no escaping.
 ## Testing
 
 ```sh
-make test             # all 105
+make test             # all 112
 make test-planning    # pure logic only, no subprocesses
 ```
 

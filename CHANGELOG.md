@@ -3,6 +3,27 @@
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Every entry here
 also has a full write-up in [GitHub Releases](https://github.com/wasim-osman/VideoOptimizer/releases).
 
+## [1.8.0] — 2026-09-28
+
+### Added
+- The app now remembers how much it's saved you, in total, across every launch — not just
+  the current session. Whenever nothing is converting, the window shows something like
+  "Lifetime: 4.2 GB saved across 37 files". Persisted in UserDefaults; only ever grows.
+  Verified end-to-end with real files: converted one, quit the app, relaunched, converted
+  a second, and confirmed the totals accumulated correctly across the restart rather than
+  resetting — not just that the underlying arithmetic passed in isolation.
+
+### Fixed
+- Opening a video via Finder's "Open With", double-clicking a file with this app set as
+  the default handler, or `open -a VideoOptimizer file.mp4` while the app wasn't already
+  running could silently do nothing at all. `application(_:openFiles:)` posted a
+  notification that `MainViewController` only started listening for in `viewDidAppear()` —
+  which is not guaranteed to have run yet on a cold launch triggered by opening a file, so
+  the notification could be (and, traced directly, reliably was) posted before anything was
+  listening, and silently vanished. Replaced with a direct call from the app delegate to
+  the view controller, buffered for the narrow case where even that doesn't exist yet.
+  Found while building real end-to-end tests for the feature above, not reported separately.
+
 ## [1.7.0] — 2026-09-27
 
 ### Fixed
