@@ -6,9 +6,11 @@ Drop a video file on the window and it is re-encoded to the smallest file that i
 visually indistinguishable from the source, at the source resolution by default.
 No dialogs, no settings to get right first.
 
-> **Status:** the encoding core is complete and covered by 94 tests. The app is not yet
-> code-signed or notarised, and it does not yet bundle its own ffmpeg — see
-> [Installation](#installation) and [Known limitations](#known-limitations).
+> **Status:** the encoding core is complete and covered by 105 tests. The release DMG bundles
+> its own ffmpeg — no Homebrew or system install required — but the app itself is not yet
+> code-signed or notarised. See [Installation](#installation) and
+> [Known limitations](#known-limitations). Full version history in
+> [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -38,14 +40,17 @@ force MKV, because MP4 cannot carry them. Legacy containers are modernised to MP
 
 ## Modes
 
-| Mode | Encoder | Trade-off |
+| Mode | Default encoder | Trade-off |
 |---|---|---|
-| **Fast** | `hevc_videotoolbox` | Apple media engine. Very fast, larger files. |
+| **Fast** | `hevc_videotoolbox` | Apple media engine, always. Very fast, larger files. |
 | **Balanced** | `libx265` (default) | Software HEVC. The default; best size/quality balance. |
 | **Smallest** | `libsvtav1` | AV1. Smallest files, slowest encode. |
 
-Balanced can be switched to the hardware encoder in Settings. Codec can be pinned to
-H.264/HEVC/AV1 in any mode.
+Codec can be pinned to H.264/HEVC/AV1 in any mode. Balanced and Smallest both have a
+"Use the Apple media engine" checkbox in Settings ▸ Quality — switching either one to
+hardware `hevc_videotoolbox`/`h264_videotoolbox` for a large speed gain at some cost to
+compression. That checkbox is greyed out whenever AV1 is selected: there is no hardware
+AV1 encoder on Apple Silicon yet, so it would have nothing to route to.
 
 ## Installation
 
@@ -83,20 +88,31 @@ Or just run the pieces:
 
 ```sh
 make build            # swift build
-make test             # 94 tests
+make test             # 105 tests
 swift run VideoOptimizerCLI <file> [fast|balanced|smallest] --encode
 ```
 
 ## Usage
 
 Drop one or more video files on the window. Encoding starts immediately; output is written
-beside the source as `name_optimized.mp4` unless you choose otherwise in Settings.
+beside the source as `name_optimized.mp4` unless you choose otherwise in Settings. Drop
+another file while one is already converting and it queues behind it — the status line
+names whatever's waiting ("next: b.mp4", or "+N" beyond that), not just a bare count.
 
-- **File ▸ Stop Converting (⌘.)** or **Esc** cancels. ffmpeg is asked to finalise the partial
-  file first, then signalled if it does not comply.
+- **Double-click the window** to browse for files instead of dragging — the same picker
+  as File ▸ Open… (⌘O). A single click still reveals the last result in Finder; the two
+  are told apart by the system's own double-click timing, so one doesn't trigger the other.
+- **The gear icon** (top-right corner) opens Settings. **The stop icon** (top-left,
+  appears only while something is converting) cancels — same as File ▸ Stop Converting
+  (⌘.) or Esc. ffmpeg is asked to finalise the partial file first, then signalled if it
+  does not comply within a few seconds.
+- A file that's cancelled, fails, or even succeeds can always be dropped again in the same
+  session — nothing about a past attempt permanently blocks retrying that exact file.
 - Output is written to `name_optimized.mp4.part` and moved into place only on success, so an
   interrupted encode never leaves a half-written file where a real one should be.
-- Click the window after a run to reveal the result in Finder.
+- Quitting (⌘Q or closing the window) while something is converting asks for confirmation
+  first, then actually stops the encode before the app terminates — it won't silently leave
+  ffmpeg running in the background with nothing left able to see or cancel it.
 
 ## App icon
 
@@ -142,13 +158,18 @@ quotes and parentheses need no escaping.
 ## Testing
 
 ```sh
-make test             # all 94
+make test             # all 105
 make test-planning    # pure logic only, no subprocesses
 ```
 
 `FFmpegRunner` is tested against a stub `ffmpeg` shell script, so process lifecycle, the
 `.part` rename, the post-flight guard and cancellation are all covered without encoding
-anything.
+anything. `JobQueueSequentialTests` goes the other way — real ffprobe/ffmpeg, real short
+generated clips, no stub — for the orchestration that sits above a single encode: a file
+dropped after the previous one finishes, one dropped while another is still encoding, and
+cancelling a job then either dropping a different file or re-dropping the same one. That
+layer has caught real, otherwise-invisible bugs before, so it's asserted against the real
+pipeline rather than mocked.
 
 Note for contributors: this project is developed on a machine with Apple's Command Line Tools
 but no full Xcode, where **XCTest does not exist**. The suite uses swift-testing, and
@@ -166,6 +187,9 @@ have full Xcode installed, that flag is harmless.
   into the NV12/P010 formats the filters need, so they decode in software. Correct, just slower.
 - **The grain classifier is aggressive.** Anything above 2× the codec's norm bitrate is treated
   as grainy and given +2 CRF, which at 1080p30 catches ordinary high-bitrate camera footage.
+- **No hardware AV1 encoder exists on Apple Silicon yet.** AV1 output is always software
+  (SVT-AV1), in every mode, regardless of the "Use the Apple media engine" setting — see
+  [Modes](#modes).
 
 ## Bundling ffmpeg
 
