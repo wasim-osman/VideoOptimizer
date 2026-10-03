@@ -35,6 +35,37 @@ struct EncodePlannerTests {
         #expect(result.arguments.isEmpty, "a refused job must not carry an ffmpeg command")
     }
 
+    // MARK: - forceEncode (the "convert anyway?" bypass)
+
+    @Test("forceEncode skips the pre-flight refusal and plans a real command instead")
+    func forceEncodeSkipsPreflightRefusal() {
+        let media = Fixtures.efficientHEVC()
+        let result = planner.plan(media: media, settings: Settings(), forceEncode: true)
+        #expect(result.outcome == .planned, "forcing must produce a real plan, not another refusal")
+        #expect(result.arguments.isEmpty == false)
+    }
+
+    @Test("without forceEncode, the same efficient source is still refused as before")
+    func withoutForceEncodeStillRefused() {
+        let media = Fixtures.efficientHEVC()
+        let result = planner.plan(media: media, settings: Settings(), forceEncode: false)
+        guard case .alreadyOptimized = result.outcome else {
+            Issue.record("forceEncode defaulting to false must not change existing behaviour")
+            return
+        }
+    }
+
+    @Test("forceEncode does not change quality settings — same CRF as an ordinary plan")
+    func forceEncodeDoesNotChangeQuality() {
+        // A bloated source (not refused either way) isolates forceEncode's only effect
+        // to the guard, so the resulting CRF should be identical with or without it.
+        let media = Fixtures.h264_1080p()
+        let normal = planner.plan(media: media, settings: Settings(), forceEncode: false)
+        let forced = planner.plan(media: media, settings: Settings(), forceEncode: true)
+        #expect(normal.crfUsed == forced.crfUsed)
+        #expect(normal.encoderUsed == forced.encoderUsed)
+    }
+
     // MARK: - Stream mapping
 
     @Test("every audio track is mapped when audio is kept")

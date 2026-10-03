@@ -25,12 +25,14 @@ public final class FFmpegRunner: @unchecked Sendable {
     public var isRunning: Bool { process?.isRunning ?? false }
 
     /// Runs `arguments` against `outputURL`. Writes to `<output>.part` and renames on success (spec §4.2).
-    /// After finish, applies the post-flight bloat guard (spec §2.2).
+    /// After finish, applies the post-flight bloat guard (spec §2.2) unless `bypassBloatGuard`
+    /// is set — only when the user explicitly confirmed "convert anyway" for this file.
     public func run(
         arguments: [String],
         outputURL: URL,
         inputSize: Int64,
         duration: Double,
+        bypassBloatGuard: Bool = false,
         onProgress: (@Sendable (Double) -> Void)? = nil
     ) async -> FFmpegResult {
         guard FileManager.default.isExecutableFile(atPath: binaryPath) else {
@@ -87,7 +89,7 @@ public final class FFmpegRunner: @unchecked Sendable {
             )
         }
         let outputSize = ((try? FileManager.default.attributesOfItem(atPath: partPath)[.size]) as? Int64) ?? 0
-        if BloatGuard.postFlightShouldDiscard(inputSize: inputSize, outputSize: outputSize) {
+        if !bypassBloatGuard, BloatGuard.postFlightShouldDiscard(inputSize: inputSize, outputSize: outputSize) {
             try? FileManager.default.removeItem(atPath: partPath)
             return FFmpegResult(
                 success: false, outputURL: nil, discardedAsBlob: true,

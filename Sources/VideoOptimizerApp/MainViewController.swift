@@ -76,24 +76,45 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         hasAnnouncedDrain = false
         Task { @MainActor in
             await adoptPendingConcurrencyIfIdle()
+            let allJobs = await queue.snapshot()
             // macOS can deliver one window-drop through BOTH the drag handler and
             // application(_:openFiles:) — de-duplicate so one file = one job. Only
             // against jobs still actually in flight: a cancelled, failed, or even
             // succeeded job must not block that same file from ever being re-dropped
             // again in this session — re-dropping the file you just cancelled is a
             // completely reasonable thing to do, and used to be silently ignored.
-            let live = await queue.snapshot()
-                .filter { Self.isActive($0.state) }
-                .map { $0.inputURL.standardizedFileURL }
-            var seen = Set(live)
+            var seen = Set(allJobs.filter { Self.isActive($0.state) }.map { $0.inputURL.standardizedFileURL })
             for url in urls {
                 let key = url.standardizedFileURL
                 guard !seen.contains(key) else { continue }
                 seen.insert(key)
-                await queue.addJob(url: url)
+
+                // This exact file was already refused once (already efficient, or a
+                // re-encode would have been bigger) — ask before trying again rather
+                // than silently repeating the same refusal.
+                if let refused = ForceConvert.shouldPromptToForce(url: url, among: allJobs) {
+                    guard confirmForceConvert(fileName: url.lastPathComponent, reason: refused.error) else { continue }
+                    await queue.addJob(url: url, forceEncode: true)
+                } else {
+                    await queue.addJob(url: url)
+                }
             }
             refresh()
         }
+    }
+
+    /// "Convert anyway?" after a file was already refused once. Modal and synchronous —
+    /// the same pattern Settings already uses for its one confirmation (deleteSource) —
+    /// since this needs the user's answer before deciding whether to enqueue anything.
+    private func confirmForceConvert(fileName: String, reason: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Convert \"\(fileName)\" anyway?"
+        alert.informativeText = "\(reason)\n\nConverting it again will still run, but it may not save "
+            + "space, and re-encoding it loses a little quality each time."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Convert Anyway")
+        alert.addButton(withTitle: "Cancel")
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     /// `JobQueue` fixes its concurrency at init, so a changed setting takes effect

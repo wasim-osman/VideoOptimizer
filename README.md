@@ -6,7 +6,7 @@ Drop a video file on the window and it is re-encoded to the smallest file that i
 visually indistinguishable from the source, at the source resolution by default.
 No dialogs, no settings to get right first.
 
-> **Status:** the encoding core is complete and covered by 123 tests. The release DMG bundles
+> **Status:** the encoding core is complete and covered by 137 tests. The release DMG bundles
 > its own ffmpeg — no Homebrew or system install required — but the app itself is not yet
 > code-signed or notarised. See [Installation](#installation) and
 > [Known limitations](#known-limitations). Full version history in
@@ -88,7 +88,7 @@ Or just run the pieces:
 
 ```sh
 make build            # swift build
-make test             # 123 tests
+make test             # 137 tests
 swift run VideoOptimizerCLI <file> [fast|balanced|smallest] --encode
 ```
 
@@ -112,6 +112,10 @@ names whatever's waiting ("next: b.mp4", or "+N" beyond that), not just a bare c
   the status line says exactly why** (e.g. "0.042 bits/pixel/frame is below the 0.045 floor
   for h264"), rather than just going quiet. No new file appearing is the correct, intended
   outcome in that case — see [the bloat guard](#what-makes-it-different-from-an-ffmpeg-wrapper).
+  **Drop that exact same file again and it asks instead of refusing silently a second
+  time** — "Convert Anyway?", with the same reason shown. Converting anyway skips both
+  guards for that one file: it may not save space, and re-encoding loses a little quality
+  each time, but it always produces real output rather than refusing forever.
 - Output is written to `name_optimized.mp4.part` and moved into place only on success, so an
   interrupted encode never leaves a half-written file where a real one should be.
 - Quitting (⌘Q or closing the window) while something is converting asks for confirmation
@@ -165,7 +169,7 @@ quotes and parentheses need no escaping.
 ## Testing
 
 ```sh
-make test             # all 123
+make test             # all 137
 make test-planning    # pure logic only, no subprocesses
 ```
 

@@ -226,4 +226,44 @@ final class JobQueueSequentialTests {
             #expect(retryJob?.state == .succeeded, "got \(String(describing: retryJob?.state))")
         }
     }
+
+    /// The "convert anyway?" feature end-to-end: a file efficient enough that the
+    /// ordinary pipeline refuses it, actually goes through and produces real output
+    /// when forced — against the real pipeline, not just the planner/runner in
+    /// isolation, since it's the combination (JobQueue threading the flag through both
+    /// guards) that could silently drop it at either end.
+    @Test("forceEncode actually converts a file the guard would otherwise refuse")
+    func forceEncodeConvertsAnEfficientFile() async throws {
+        // Low bitrate enough to sit below the h264 floor (0.045 bpp): 200kbps at
+        // 640x360x30fps is ~0.029 bpp.
+        let url = dir.appendingPathComponent("efficient.mp4")
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: BinaryLocator.ffmpegPath())
+        process.arguments = [
+            "-hide_banner", "-y", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30",
+            "-t", "3", "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "200k",
+            url.path,
+        ]
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        process.waitUntilExit()
+
+        let queue = JobQueue(maxConcurrent: 1)
+
+        let idNormal = await queue.addJob(url: url)
+        let normalJob = await pollUntilTerminal(queue, idNormal)
+        #expect(normalJob?.state == .alreadyOptimized,
+                "precondition: this fixture must actually be efficient enough to refuse, got \(String(describing: normalJob?.state))")
+
+        let idForced = await queue.addJob(url: url, forceEncode: true)
+        let forcedJob = await pollUntilTerminal(queue, idForced)
+        #expect(forcedJob?.state == .succeeded,
+                "forcing must produce real output despite the guard, got \(String(describing: forcedJob?.state))")
+        if let resultURL = forcedJob?.resultURL {
+            #expect(FileManager.default.fileExists(atPath: resultURL.path))
+        } else {
+            Issue.record("a succeeded forced job must still have a resultURL")
+        }
+    }
 }

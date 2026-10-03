@@ -123,4 +123,14 @@ struct IdleSummaryTests {
         let jobs = [job(state: .succeeded, inputSize: 1000, resultSize: nil)]
         #expect(IdleSummary.detail(for: jobs).contains("(−0%)"))
     }
+
+    /// Forcing a convert past the bloat guard can genuinely grow the file — this must
+    /// read as plain growth, never as a double-negative like "(−-25%)".
+    @Test("a forced conversion that grew the file reads as growth, not a double negative")
+    func forcedConversionThatGrewReadsAsGrowth() {
+        let jobs = [job(state: .succeeded, inputSize: 1000, resultSize: 1250)]
+        let detail = IdleSummary.detail(for: jobs)
+        #expect(detail.contains("+25% larger"), "got \(detail)")
+        #expect(detail.contains("−-") == false, "must never render as a double negative")
+    }
 }

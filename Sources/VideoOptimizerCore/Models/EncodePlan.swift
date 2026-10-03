@@ -65,12 +65,17 @@ public struct Job: Sendable, Codable, Identifiable, Equatable {
     public var resultURL: URL?
     public var resultSize: Int64?
     public var mediaInfo: MediaInfo?
+    /// Set when the user explicitly confirmed "convert anyway" after this exact file
+    /// was already refused once by the bloat guard. Skips both the pre-flight and
+    /// post-flight guard for this job only — every other setting is unchanged.
+    public var forceEncode: Bool
 
-    public init(inputURL: URL) {
+    public init(inputURL: URL, forceEncode: Bool = false) {
         self.id = UUID()
         self.inputURL = inputURL
         self.inputSize = (try? FileManager.default.attributesOfItem(atPath: inputURL.path)[.size] as? Int64) ?? 0
         self.state = .queued
         self.progress = 0
+        self.forceEncode = forceEncode
     }
 }

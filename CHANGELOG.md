@@ -3,6 +3,27 @@
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Every entry here
 also has a full write-up in [GitHub Releases](https://github.com/wasim-osman/VideoOptimizer/releases).
 
+## [1.10.0] — 2026-10-03
+
+### Added
+- Drop a file the bloat guard already refused once, and it now asks "Convert Anyway?"
+  instead of silently refusing again — same reason shown, two choices: convert anyway
+  (skips both the pre-flight and post-flight guard for that one file — may not save
+  space, and loses a little quality each re-encode, but always produces real output) or
+  cancel. Every other file keeps being refused normally; this only applies to the exact
+  file you've already seen refused.
+
+### Fixed
+- The before/after summary could render as a nonsensical double negative ("(−-12%)") for
+  a forced conversion that grew the file — now reads as plain growth ("(+12% larger)").
+
+14 new tests, including a real end-to-end one (real ffmpeg, no stub): a file genuinely too
+efficient to pass the guard, forced through, confirmed to actually produce real output. A
+first draft of the "was this file already refused" check had a real bug — it found the
+most recent *refusal* rather than the most recent *attempt*, so a file that had since
+succeeded (e.g. after changing settings) would still incorrectly prompt again; caught by
+its own test and fixed before shipping. 137 tests passing.
+
 ## [1.9.0] — 2026-10-03
 
 ### Fixed

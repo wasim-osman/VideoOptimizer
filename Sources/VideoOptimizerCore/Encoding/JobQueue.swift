@@ -26,10 +26,13 @@ public actor JobQueue {
         order.compactMap { jobs[$0] }
     }
 
+    /// `forceEncode` skips both the pre-flight and post-flight bloat guard for this one
+    /// job — only set after the user has explicitly confirmed "convert anyway" for this
+    /// exact file (see ForceConvert.shouldPromptToForce).
     @discardableResult
-    public func addJob(url: URL) async -> UUID {
+    public func addJob(url: URL, forceEncode: Bool = false) async -> UUID {
         beginActivityIfNeeded()
-        let job = Job(inputURL: url)
+        let job = Job(inputURL: url, forceEncode: forceEncode)
         jobs[job.id] = job
         order.append(job.id)
         drain()
@@ -112,7 +115,7 @@ public actor JobQueue {
 
         // Plan
         update(id) { $0.state = .planning }
-        let plan = EncodePlanner().plan(media: media, settings: currentSettings)
+        let plan = EncodePlanner().plan(media: media, settings: currentSettings, forceEncode: job.forceEncode)
         switch plan.outcome {
         case .alreadyOptimized(let reason), .sourceTooSmall(let reason):
             update(id) {
@@ -148,7 +151,8 @@ public actor JobQueue {
             arguments: plan.arguments,
             outputURL: plan.outputURL,
             inputSize: job.inputSize,
-            duration: media.format.duration
+            duration: media.format.duration,
+            bypassBloatGuard: job.forceEncode
         ) { percent in
             Task { await self.update(id) { $0.progress = percent } }
 

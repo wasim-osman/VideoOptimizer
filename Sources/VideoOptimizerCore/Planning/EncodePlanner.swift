@@ -12,20 +12,26 @@ public struct EncodePlanner: Sendable {
 
     public init() {}
 
-    public func plan(media: MediaInfo, settings: Settings) -> EncodePlan {
+    /// `forceEncode` skips the pre-flight guard below entirely — set only when the user
+    /// has explicitly confirmed "convert anyway" for this exact file after it was
+    /// already refused once (see ForceConvert.shouldPromptToForce). Every other setting
+    /// behaves exactly as normal; this does not relax quality, just the size guard.
+    public func plan(media: MediaInfo, settings: Settings, forceEncode: Bool = false) -> EncodePlan {
         // ------------------------------------------------------------------
-        // 0. Pre-flight bloat guard (spec §2.2)
+        // 0. Pre-flight bloat guard (spec §2.2) — skipped when forceEncode is set
         // ------------------------------------------------------------------
-        switch bloatGuard.preflight(media) {
-        case .alreadyOptimised(let reason):
-            return EncodePlan(
-                arguments: [],
-                inputURL: URL(fileURLWithPath: media.format.filename),
-                outputURL: URL(fileURLWithPath: media.format.filename),
-                outcome: .alreadyOptimized(reason: reason)
-            )
-        case .proceed:
-            break
+        if !forceEncode {
+            switch bloatGuard.preflight(media) {
+            case .alreadyOptimised(let reason):
+                return EncodePlan(
+                    arguments: [],
+                    inputURL: URL(fileURLWithPath: media.format.filename),
+                    outputURL: URL(fileURLWithPath: media.format.filename),
+                    outcome: .alreadyOptimized(reason: reason)
+                )
+            case .proceed:
+                break
+            }
         }
 
         // ------------------------------------------------------------------

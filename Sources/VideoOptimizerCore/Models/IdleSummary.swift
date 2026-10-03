@@ -33,7 +33,11 @@ public enum IdleSummary {
             let after = converted.reduce(Int64(0)) { $0 + ($1.resultSize ?? $1.inputSize) }
             guard before > 0 else { return "" }
             let percent = Int((1 - Double(after) / Double(before)) * 100)
-            return "\(formatBytes(before)) → \(formatBytes(after)) (−\(percent)%) · click to show in Finder"
+            // Forcing a convert past the bloat guard can genuinely grow the file — a
+            // bare "(−\(percent)%)" would then read as a nonsensical double negative
+            // ("(−-12%)"), since percent itself goes negative in that case.
+            let percentText = percent >= 0 ? "−\(percent)%" : "+\(-percent)% larger"
+            return "\(formatBytes(before)) → \(formatBytes(after)) (\(percentText)) · click to show in Finder"
         }
         if let failed = jobs.last(where: { $0.state == .failed }), !failed.error.isEmpty {
             return failed.error

@@ -51,12 +51,13 @@ final class FFmpegRunnerTests {
         try? FileManager.default.removeItem(at: dir)
     }
 
-    private func run(output: URL, inputSize: Int64 = 100_000) async -> FFmpegResult {
+    private func run(output: URL, inputSize: Int64 = 100_000, bypassBloatGuard: Bool = false) async -> FFmpegResult {
         await FFmpegRunner(binaryPath: stub.path).run(
             arguments: ["-i", "input.mp4", output.path],
             outputURL: output,
             inputSize: inputSize,
-            duration: 10
+            duration: 10,
+            bypassBloatGuard: bypassBloatGuard
         )
     }
 
@@ -130,6 +131,21 @@ final class FFmpegRunnerTests {
         #expect(FileManager.default.fileExists(atPath: output.path) == false,
                 "a bloated result must never reach the final path")
         #expect(partExists(output) == false)
+    }
+
+    @Test("bypassBloatGuard keeps a larger-than-source output instead of discarding it")
+    func bypassBloatGuardKeepsBloatedOutput() async throws {
+        setenv("VO_STUB_SIZE", "5000", 1)
+        let output = dir.appendingPathComponent("out.mp4")
+
+        let result = await run(output: output, inputSize: 4000, bypassBloatGuard: true)
+
+        #expect(result.success, "\(result.message)")
+        #expect(result.discardedAsBlob == false)
+        #expect(FileManager.default.fileExists(atPath: output.path),
+                "forcing it through must actually keep the bigger file, not just skip the discard")
+        let size = try FileManager.default.attributesOfItem(atPath: output.path)[.size] as? Int64
+        #expect(size == 5000)
     }
 
     @Test("a marginal saving is discarded")
