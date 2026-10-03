@@ -224,8 +224,8 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         }
 
         announceDrainIfNeeded()
-        dropZone.show(.init(headline: summaryHeadline(jobs), detail: summaryDetail(jobs), progress: nil,
-                            lifetimeCaption: lifetimeCaption()))
+        dropZone.show(.init(headline: IdleSummary.headline(for: jobs), detail: IdleSummary.detail(for: jobs),
+                            progress: nil, lifetimeCaption: lifetimeCaption()))
     }
 
     /// Folds every newly-succeeded job's before/after sizes into the persisted lifetime
@@ -245,32 +245,6 @@ final class MainViewController: NSViewController, NSMenuItemValidation {
         guard stats.filesConverted > 0 else { return "" }
         let filesText = stats.filesConverted == 1 ? "1 file" : "\(stats.filesConverted) files"
         return "Lifetime: \(format(stats.totalBytesSaved)) saved across \(filesText)"
-    }
-
-    private func summaryHeadline(_ jobs: [Job]) -> String {
-        let succeeded = jobs.filter { $0.state == .succeeded }.count
-        let skipped = jobs.filter { $0.state == .alreadyOptimized || $0.state == .discardedAsBlob }.count
-        let failed = jobs.filter { $0.state == .failed }.count
-        let cancelled = jobs.filter { $0.state == .cancelled }.count
-
-        var parts: [String] = []
-        if succeeded > 0 { parts.append("\(succeeded) converted") }
-        if skipped > 0 { parts.append("\(skipped) already optimised") }
-        if cancelled > 0 { parts.append("\(cancelled) stopped") }
-        if failed > 0 { parts.append("\(failed) failed") }
-        return parts.isEmpty ? "Drop video files here" : parts.joined(separator: " · ")
-    }
-
-    private func summaryDetail(_ jobs: [Job]) -> String {
-        let converted = jobs.filter { $0.state == .succeeded }
-        guard !converted.isEmpty else {
-            return jobs.first(where: { $0.state == .failed })?.error ?? ""
-        }
-        let before = converted.reduce(Int64(0)) { $0 + $1.inputSize }
-        let after = converted.reduce(Int64(0)) { $0 + ($1.resultSize ?? $1.inputSize) }
-        guard before > 0 else { return "" }
-        let percent = Int((1 - Double(after) / Double(before)) * 100)
-        return "\(format(before)) → \(format(after)) (−\(percent)%) · click to show in Finder"
     }
 
     private func announceDrainIfNeeded() {

@@ -6,7 +6,7 @@ Drop a video file on the window and it is re-encoded to the smallest file that i
 visually indistinguishable from the source, at the source resolution by default.
 No dialogs, no settings to get right first.
 
-> **Status:** the encoding core is complete and covered by 112 tests. The release DMG bundles
+> **Status:** the encoding core is complete and covered by 123 tests. The release DMG bundles
 > its own ffmpeg — no Homebrew or system install required — but the app itself is not yet
 > code-signed or notarised. See [Installation](#installation) and
 > [Known limitations](#known-limitations). Full version history in
@@ -88,7 +88,7 @@ Or just run the pieces:
 
 ```sh
 make build            # swift build
-make test             # 112 tests
+make test             # 123 tests
 swift run VideoOptimizerCLI <file> [fast|balanced|smallest] --encode
 ```
 
@@ -108,6 +108,10 @@ names whatever's waiting ("next: b.mp4", or "+N" beyond that), not just a bare c
   does not comply within a few seconds.
 - A file that's cancelled, fails, or even succeeds can always be dropped again in the same
   session — nothing about a past attempt permanently blocks retrying that exact file.
+- **If a file is refused — already efficient enough, or the result would have been bigger —
+  the status line says exactly why** (e.g. "0.042 bits/pixel/frame is below the 0.045 floor
+  for h264"), rather than just going quiet. No new file appearing is the correct, intended
+  outcome in that case — see [the bloat guard](#what-makes-it-different-from-an-ffmpeg-wrapper).
 - Output is written to `name_optimized.mp4.part` and moved into place only on success, so an
   interrupted encode never leaves a half-written file where a real one should be.
 - Quitting (⌘Q or closing the window) while something is converting asks for confirmation
@@ -161,7 +165,7 @@ quotes and parentheses need no escaping.
 ## Testing
 
 ```sh
-make test             # all 112
+make test             # all 123
 make test-planning    # pure logic only, no subprocesses
 ```
 

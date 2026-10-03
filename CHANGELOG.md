@@ -3,6 +3,26 @@
 Format loosely follows [Keep a Changelog](https://keepachangelog.com/). Every entry here
 also has a full write-up in [GitHub Releases](https://github.com/wasim-osman/VideoOptimizer/releases).
 
+## [1.9.0] — 2026-10-03
+
+### Fixed
+- A file refused by the bloat guard (already efficiently encoded, or a re-encode would
+  only have made it bigger) showed a blank detail line — just a generic "1 already
+  optimised" headline with no explanation underneath, easy to read as the app having
+  done nothing at all. The specific reason (e.g. "0.042 bits/pixel/frame is below the
+  0.045 floor for h264") was already being recorded on the job; it just never reached
+  the screen. Extracted the status-line logic into `IdleSummary` (Core, 11 new tests)
+  so this fallback priority is actually verified, not just reviewed by eye.
+
+### Verified
+- Re-investigated a real "nothing happens" report down to its root file: the bloat
+  guard's refusal was correct — a real re-encode of the exact reported file at the
+  planner's own settings produced a file 43% *larger* than the source. Confirmed the
+  lifetime savings counter (added in 1.8.0) is accumulating correctly against a real
+  user's actual existing total, not just a fresh test one: converted a real file
+  through the live app and confirmed the counter advanced by the exact expected byte
+  counts from its prior real value, then restored that value afterward.
+
 ## [1.8.0] — 2026-09-28
 
 ### Added
